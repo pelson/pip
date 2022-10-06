@@ -110,6 +110,8 @@ class Configuration:
         self.isolated = isolated
         self.load_only = load_only
 
+        self._load_order: Tuple[Kind, ...] = OVERRIDE_ORDER
+
         # Because we keep track of where we got the data from
         self._parsers: Dict[Kind, List[Tuple[str, RawConfigParser]]] = {
             variant: [] for variant in OVERRIDE_ORDER
@@ -124,6 +126,13 @@ class Configuration:
         self._load_config_files()
         if not self.isolated:
             self._load_environment_vars()
+
+    @property
+    def load_order(self) -> Tuple[Kind, ...]:
+        # The act of computing the config dictionary will result in the _load_order
+        # attribute being correctly updated.
+        _ = self._dictionary
+        return self._load_order
 
     def get_file_to_edit(self) -> Optional[str]:
         """Returns the file with highest priority in configuration"""
@@ -225,11 +234,45 @@ class Configuration:
     @property
     def _dictionary(self) -> Dict[str, Any]:
         """A dictionary representing the loaded configuration."""
+
+        # We always read the config in the default load-order first, giving
+        # us a deterministic load-order configuration value.
+        config = self._blended_config_dict(OVERRIDE_ORDER)
+
+        # Re-compose the config based on the desired override-order, if
+        # different to the default.
+        config_precedence: List[str] = (
+            str(config.get("global.config-precedence", "")).strip().splitlines()
+        )
+        if config_precedence:
+            bad_values = [
+                value
+                for value in config_precedence
+                if value not in kinds.reverse_mapping
+            ]
+            if bad_values:
+                term_or_terms = "term" if len(bad_values) == 1 else "terms"
+                raise ConfigurationError(
+                    f"Invalid config-precedence {term_or_terms} provided "
+                    f"({','.join(bad_values)}). "
+                    f"Valid values are {', '.join(map(repr, kinds.reverse_mapping))}."
+                )
+            self._load_order = tuple(
+                getattr(kinds, kinds.reverse_mapping[value])
+                for value in config_precedence
+            )
+            if self._load_order != OVERRIDE_ORDER:
+                config = self._blended_config_dict(self._load_order)
+        return config
+
+    def _blended_config_dict(
+        self, load_order: Tuple[Kind, ...] = OVERRIDE_ORDER
+    ) -> Dict[str, Any]:
         # NOTE: Dictionaries are not populated if not loaded. So, conditionals
         #       are not needed here.
         retval = {}
 
-        for variant in OVERRIDE_ORDER:
+        for variant in load_order:
             retval.update(self._config[variant])
 
         return retval

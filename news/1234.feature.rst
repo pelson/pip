@@ -1,0 +1,1 @@
+The config precedence can now be overridden with a special ``config-precedence`` config value
