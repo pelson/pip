@@ -207,6 +207,7 @@ class ConfigurationCommand(Command):
                     write_output("%s, exists: %r", fname, file_exists)
                     if file_exists:
                         self.print_config_file_values(variant)
+        write_output("load-precedence: %s", ", ".join(self.configuration.load_order))
 
     def print_config_file_values(self, variant: Kind) -> None:
         """Get key-value pairs from the file of a variant"""
@@ -216,7 +217,7 @@ class ConfigurationCommand(Command):
 
     def print_env_var_values(self) -> None:
         """Get key-values pairs present as environment variables"""
-        write_output("%s:", "env_var")
+        write_output("%s:", "env-var")
         with indent_log():
             for key, value in sorted(self.configuration.get_environ_vars()):
                 env_var = f"PIP_{key.upper()}"
